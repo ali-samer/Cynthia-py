@@ -19,6 +19,6 @@ Contributions are more than welcome :D If you're interested in improving Cynthia
 ## License
 This project is licensed under the [MIT License](link-to-license).
 
-## Acknowledgements
-A heartfelt thank you to all contributors and members of the open-source community who have supported this project.
-
+## Goals for Week-3
+- **Finish implementing the parameter optimizer algorithms**
+- **Begin working on linear regression**

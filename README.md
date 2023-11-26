@@ -14,7 +14,7 @@ Welcome to Cynthia-py, an innovative deep learning framework developed from scra
 The framework is not yet stable for any projects as it merely contains the algorithms to start building machine/deep learning objectives.
 
 ## Contributing
-Contributions are more than welcome :D If you're interested in improving Cynthia-py, please read our [Contributing Guidelines]([link-to-contributing-guidelines](https://github.com/ali-samer/Cynthia-py/blob/main/CONTRIBUTING.md)).
+Contributions are more than welcome :D If you're interested in improving Cynthia-py, please read our [Contributing Guidelines](https://github.com/ali-samer/Cynthia-py/blob/main/CONTRIBUTING.md).
 
 ## License
 This project is licensed under the [MIT License](link-to-license).

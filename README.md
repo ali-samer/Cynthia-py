@@ -17,7 +17,7 @@ The framework is not yet stable for any projects as it merely contains the algor
 Contributions are more than welcome :D If you're interested in improving Cynthia-py, please read our [Contributing Guidelines](https://github.com/ali-samer/Cynthia-py/blob/main/CONTRIBUTING.md).
 
 ## License
-This project is licensed under the [MIT License](link-to-license).
+This project is licensed under the [MIT License](https://github.com/ali-samer/Cynthia-py/blob/main/LICENSE).
 
 ## Goals for Week-3
 - **Finish implementing the parameter optimizer algorithms**

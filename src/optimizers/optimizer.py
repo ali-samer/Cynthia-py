@@ -50,14 +50,31 @@ class Adagrad(Optimizers):
             get_key_from_params(self.starting_point_keys, **kwargs))
         self.grad = super.df
         self.init = True
+        self.gradient_cumulative = None
+        self.multivariate = False
+
 
     def update(self, **kwargs):
-        x = get_key_from_params(self.starting_point_keys, kwargs, self.starting_point_cb)
         alpha = get_key_from_params(self.learning_rate_keys, kwargs)
-        grad_of_x = self.grad(x)
         epsilon = get_key_from_params(self.threshold_keys, kwargs, self.threshold_cb)
-        self.squared_gradients += grad_of_x ** 2
-        return x - alpha * grad_of_x / (np.sqrt(self.squared_gradients) + epsilon)
+
+        if 'params' not in kwargs:
+            x = get_key_from_params(self.starting_point_keys, kwargs, self.starting_point_cb)
+            grad_of_x = self.df(x)
+
+            self.squared_gradients += grad_of_x ** 2
+            return x - alpha * grad_of_x / (np.sqrt(self.squared_gradients) + epsilon)
+
+        self.multivariate = True
+        if self.gradient_cumulative is None:
+            params = get_key_from_params(['params'], kwargs)
+            grads = get_key_from_params(['grads', 'gradient'], kwargs)
+            self.gradient_cumulative = {k: np.ones_like(v) for k, v in params.keys()}
+
+        for key in params.keys() and self.multivariate:
+            self.gradient_cumulative[key] += grads[key](params.keys()) ** 2
+            params[key] -= (alpha / (np.sqrt(self.gradient_cumulative[key]) + epsilon))
+            return params
 
 
 class Momentum(Optimizers):
@@ -67,7 +84,6 @@ class Momentum(Optimizers):
         self.gamma = get_key_from_params(self.momentum_keys, kwargs)
         self.init = True
         self.df = super.df
-        self.grad = super.grad
 
     def update(self, **kwargs):
         x = get_key_from_params(self.starting_point_keys, kwargs)
@@ -77,5 +93,23 @@ class Momentum(Optimizers):
 
 class Adadelta(Optimizers):
     def __init__(self, **kwargs):
-        super.__init__(**kwargs)
+        super().__init__(**kwargs)
+        self.adadelta_keys = ['rho', 'edelta']
+        self.x = get_key_from_params(self.starting_point_keys, kwargs, self.starting_point_cb)
+        self.rho = get_key_from_params(self.adadelta_keys, kwargs, self.param_cb)
+        self.Eg = np.ones_like(self.x)
+        self.Edelta = np.ones_like(self.x)
+
+    def update(self, **kwargs):
+        x = get_key_from_params(self.starting_point_keys, kwargs, self.starting_point_cb)
+        epsilon = get_key_from_params(self.threshold_keys, kwargs, self.threshold_cb)
+        alpha = get_key_from_params(self.learning_rate_keys, kwargs, self.learning_rate_cb)
+
+        self.Eg = self.rho*self.Eg + (1-self.rho)*(self.df(x)**2)
+        delta = np.sqrt((self.Edelta + epsilon) / (self.Eg + epsilon))*self.df(x)
+        self.Edelta = self.rho*self.Eg + (1-self.rho)*(delta**2)
+        return x - alpha*delta
+
+
+
 

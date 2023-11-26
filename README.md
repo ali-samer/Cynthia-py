@@ -22,3 +22,4 @@ This project is licensed under the [MIT License](https://github.com/ali-samer/Cy
 ## Goals for Week-3
 - **Finish implementing the parameter optimizer algorithms**
 - **Begin working on linear regression**
+- **Begin researching automatic differentiation to implement APIs**

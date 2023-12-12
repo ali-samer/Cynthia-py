@@ -1,11 +1,9 @@
-import numpy as np
 import warnings
 
+import numpy as np
 
-from src.optimizers.algorithms import *
 
-
-def get_key_from_params(keys: list, kwargs: dict, callback = None):
+def get_key_from_params(keys: list, kwargs: dict, callback=None):
     """
     Retrieves a value from a dictionary based on a list of keys.
 
@@ -27,7 +25,8 @@ class Optimizers:
     """
     Base class for optimization algorithms.
 
-    This class initializes common parameters used by various optimization algorithms and provides a template for the update method.
+    This class initializes common parameters used by various optimization algorithms and provides a
+    template for the update method.
 
     Attributes:
     - starting_point_keys (list): Keys to identify the starting point in the arguments.
@@ -41,12 +40,14 @@ class Optimizers:
     - df (function): Alias for the gradient function.
     - learning_rate (float): Alias for the alpha (learning rate).
     """
+
     def __init__(self, **kwargs):
         self.starting_point_keys = ['x', 'initial_point', 'starting_point']
         self.grad_keys = ['df', 'gradient', 'derivative']
         self.threshold_keys = ['threshold', 'epsilon', 'bar']
         self.learning_rate_keys = ['alpha', 'learning_rate', 'rate']
-        self.momentum_keys = ['momentum', 'gamma']
+        self.momentum_keys = ['momentum', 'gamma', 'beta']
+        self.adadelta_keys = ['rho', 'edelta']
 
         self.alpha = get_key_from_params(self.learning_rate_keys, kwargs, self.threshold_cb)
         self.initial_input = get_key_from_params(self.starting_point_keys, kwargs, self.starting_point_cb)
@@ -54,7 +55,7 @@ class Optimizers:
         self.df = self.grad
         self.learning_rate = self.alpha
 
-    def update(self, *args):
+    def update(self, **kwargs):
         """
         Template method for updating the optimizer's state.
 
@@ -79,11 +80,14 @@ class Optimizers:
         warnings.warn("Threshold not specified. Program will default to a threshold of float: 1e-8")
         return 1e-8
 
+
 class Adagrad(Optimizers):
     """
     Adagrad optimizer.
 
-    Adagrad is an algorithm for gradient-based optimization that adapts the learning rate to the parameters. It performs smaller updates for parameters associated with frequently occurring features.
+    Adagrad is an algorithm for gradient-based optimization that adapts the
+    learning rate to the parameters. It performs smaller updates for parameters
+    associated with frequently occurring features.
 
     Attributes:
     - squared_gradients (numpy.ndarray): Squared gradients for each parameter.
@@ -92,6 +96,7 @@ class Adagrad(Optimizers):
     - gradient_cumulative (dict or None): Cumulative gradients for multivariate cases.
     - multivariate (bool): Flag to indicate if the optimizer is used for multivariate functions.
     """
+
     def __init__(self, **kwargs):
         """
         Initializes the Adagrad optimizer with the given parameters.
@@ -106,7 +111,6 @@ class Adagrad(Optimizers):
         self.init = True
         self.gradient_cumulative = None
         self.multivariate = False
-
 
     def update(self, **kwargs):
         """
@@ -145,7 +149,9 @@ class Momentum(Optimizers):
     """
     Momentum optimizer.
 
-    This optimizer accelerates the gradient descent algorithm by considering the 'momentum' of the gradients. It helps to accelerate gradients vectors in the right directions, thus leading to faster converging.
+    This optimizer accelerates the gradient descent algorithm by considering the 'momentum'
+    of the gradients. It helps to accelerate gradients vectors in the right directions,
+    thus leading to faster converging.
 
     Attributes:
     - vector (numpy.ndarray): The momentum vector.
@@ -153,6 +159,7 @@ class Momentum(Optimizers):
     - init (bool): Flag to indicate if the optimizer is initialized.
     - df (function): The derivative function.
     """
+
     def __init__(self, **kwargs):
         """
         Initializes the Momentum optimizer with the given parameters.
@@ -185,7 +192,9 @@ class Adadelta(Optimizers):
     """
     Adadelta optimizer.
 
-    An extension of Adagrad that seeks to reduce its aggressive, monotonically decreasing learning rate. Instead of accumulating all past squared gradients, Adadelta restricts the window of accumulated past gradients to some fixed size.
+    An extension of Adagrad that seeks to reduce its aggressive, monotonically
+    decreasing learning rate. Instead of accumulating all past squared
+    gradients, Adadelta restricts the window of accumulated past gradients to some fixed size.
 
     Attributes:
     - adadelta_keys (list): Keys to identify Adadelta specific parameters.
@@ -194,6 +203,7 @@ class Adadelta(Optimizers):
     - Eg (numpy.ndarray): Running average of the squared gradients.
     - Edelta (numpy.ndarray): Running average of the squared parameter updates.
     """
+
     def __init__(self, **kwargs):
         """
         Initializes the Adadelta optimizer with the given parameters.
@@ -202,7 +212,6 @@ class Adadelta(Optimizers):
         - **kwargs: Arbitrary keyword arguments. Expected to contain the gradient function and initial parameters.
         """
         super().__init__(**kwargs)
-        self.adadelta_keys = ['rho', 'edelta']
         self.x = get_key_from_params(self.starting_point_keys, kwargs, self.starting_point_cb)
         self.rho = get_key_from_params(self.adadelta_keys, kwargs, self.param_cb)
         self.Eg = np.ones_like(self.x)
@@ -222,11 +231,22 @@ class Adadelta(Optimizers):
         epsilon = get_key_from_params(self.threshold_keys, kwargs, self.threshold_cb)
         alpha = get_key_from_params(self.learning_rate_keys, kwargs, self.learning_rate_cb)
 
-        self.Eg = self.rho*self.Eg + (1-self.rho)*(self.df(x)**2)
-        delta = np.sqrt((self.Edelta + epsilon) / (self.Eg + epsilon))*self.df(x)
-        self.Edelta = self.rho*self.Eg + (1-self.rho)*(delta**2)
-        return x - alpha*delta
+        self.Eg = self.rho * self.Eg + (1 - self.rho) * (self.df(x) ** 2)
+        delta = np.sqrt((self.Edelta + epsilon) / (self.Eg + epsilon)) * self.df(x)
+        self.Edelta = self.rho * self.Eg + (1 - self.rho) * (delta ** 2)
+        return x - alpha * delta
 
+class RMSprop(Optimizers):
+    def __init__(self, **kwargs):
+        super.__init__(**kwargs)
+        self.x = get_key_from_params(self.starting_point_keys, **kwargs)
+        self.momentum = np.ones_like(self.x)
+        self.history = [self.x]
+        self.df = get_key_from_params(self.grad_keys, **kwargs)
+        self.beta = get_key_from_params(self.momentum_keys, **kwargs)
 
+    def update(self, **kwargs):
 
+        grad = self.df(self.x)
+        self.momentum = self.beta * self.momentum + (1 - self.beta) * grad**2
 

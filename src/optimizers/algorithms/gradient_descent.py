@@ -1,13 +1,22 @@
-from typing import Callable, List
 import numpy as np
 
-def gradient_descent(df: Callable[[np.ndarray], np.ndarray],
-                     x: np.ndarray,
-                     learning_rate: float = 0.01,
-                     iterations: int = 100,
-                     threshold: float = 1e-8,
-                     optimizerObj: 'Optimizer' = None,
-                     callback: Callable[[np.ndarray, int], None] = None) -> List[np.ndarray]:
+
+def init_history(params, phistory=None):
+    if phistory:
+        for key, val in params.items():
+            phistory[key].append(val)
+        return phistory
+
+    history = {}
+    for key, val in params.items():
+        history[key] = [val]
+    return history
+
+
+update_history = init_history
+
+
+def gradient_descent(**kwargs):
     """
     Performs gradient descent optimization.
 
@@ -20,16 +29,20 @@ def gradient_descent(df: Callable[[np.ndarray], np.ndarray],
     :param callback: Optional callback function for custom operations at each iteration.
     :return: History of parameter values through iterations.
     """
-    history = [x]
+    params = kwargs['params']
+    threshold = kwargs['threshold']
+    optimizerObj = kwargs['optimizer_obj']
+    iterations = kwargs['iterations']
+
+    history = init_history(params)
+    op_obj = optimizerObj(**kwargs)
+    print('params:', params.values())
     for i in range(iterations):
-        grad = df(x)
-        if np.linalg.norm(grad) < threshold:
+        if np.all(np.abs(np.array(list(params.values()))) < threshold):
+            print("Gradients are small enough!")
             break
-
-        x = optimizerObj.update(df, x, learning_rate, threshold) if optimizerObj else x - learning_rate * grad
-        history.append(x)
-
-        if callback:
-            callback(x, i)
+        params = op_obj.update(**kwargs)
+        history = update_history(params, phistory=history)
+        kwargs['params'] = params
 
     return history

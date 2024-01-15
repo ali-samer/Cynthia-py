@@ -1,6 +1,29 @@
 import warnings
 
 import numpy as np
+import sympy as sp
+
+from src.utils.checking import isnumpy
+from src.utils.checking import varcheck
+from src.utils.policy import policy as pl
+
+
+def init_aux_vars(numpy_operation, params, dtype=np.float64):
+    if not isinstance(params, dict):
+        raise Exception("Auxiliary variable must be a dictionary/object")
+    if not isinstance(numpy_operation, type(np.ones_like)):
+        raise Exception("Initializing operation must be a function from numerical python (numpy) module")
+    if not params:
+        raise Exception("Parameter dictionary/object is empty. You must include at least"
+                        " a single parameter in order to proceed")
+
+    auxiliary_var = {}
+    for key, val in params.items():
+        # Apply the numpy operation and convert to the specified data type
+        auxiliary_var[key] = numpy_operation(val).astype(dtype)
+
+    return auxiliary_var
+
 
 
 def get_key_from_params(keys: list, kwargs: dict, callback=None):
@@ -40,20 +63,44 @@ class Optimizers:
     - df (function): Alias for the gradient function.
     - learning_rate (float): Alias for the alpha (learning rate).
     """
+    starting_point_keys = ['x', 'initial_point', 'starting_point']
+    grad_keys = ['df', 'gradient', 'derivative']
+    function_keys = ['f', 'y', 'z']
+    threshold_keys = ['threshold', 'epsilon', 'bar']
+    learning_rate_keys = ['alpha', 'learning_rate', 'rate']
+    momentum_keys = ['momentum', 'gamma', 'beta']
+    adadelta_keys = ['rho', 'edelta']
+    params = ['x', 'y', 'z']
 
     def __init__(self, **kwargs):
-        self.starting_point_keys = ['x', 'initial_point', 'starting_point']
-        self.grad_keys = ['df', 'gradient', 'derivative']
-        self.threshold_keys = ['threshold', 'epsilon', 'bar']
-        self.learning_rate_keys = ['alpha', 'learning_rate', 'rate']
-        self.momentum_keys = ['momentum', 'gamma', 'beta']
-        self.adadelta_keys = ['rho', 'edelta']
+        self.init = True
 
-        self.alpha = get_key_from_params(self.learning_rate_keys, kwargs, self.threshold_cb)
-        self.initial_input = get_key_from_params(self.starting_point_keys, kwargs, self.starting_point_cb)
-        self.grad = get_key_from_params(self.grad_keys, kwargs, self.gradient_func_cb)
-        self.df = self.grad
+        self.alpha = get_key_from_params(self.learning_rate_keys, kwargs)
         self.learning_rate = self.alpha
+        self.threshold = get_key_from_params(self.threshold_keys, kwargs)
+        self.epsilon = self.threshold
+
+        self.cache = {}
+
+        if 'params' not in kwargs:
+            raise Exception("function parameters not specified. Must instantiate 'params' variable as a dictionary\n"
+                            "Example: { x: 1, y: 1, ... }")
+
+        self.params = kwargs['params']
+        self.grads = {}
+
+        for key, val in self.params.items():
+            self.cache[key] = sp.symbols(str(key))
+
+        x = self.cache['x']
+        y = self.cache['y']
+        self.f = x**3 - 3*x*y**2 + 2*y**3 - x**2 + 4*y**2
+
+        print(self.cache)
+        print(self.cache.items())
+        for key, val in self.params.items():
+            partial = sp.diff(self.f, self.cache[key])
+            self.grads[key] = sp.lambdify(tuple(self.cache.values()), partial, 'numpy')
 
     def update(self, **kwargs):
         """
@@ -105,12 +152,7 @@ class Adagrad(Optimizers):
         - **kwargs: Arbitrary keyword arguments. Expected to contain the gradient function and initial parameters.
         """
         super().__init__(**kwargs)
-        self.squared_gradients = np.ones_like(
-            get_key_from_params(self.starting_point_keys, **kwargs))
-        self.grad = super.df
-        self.init = True
-        self.gradient_cumulative = None
-        self.multivariate = False
+        self.squared_grads = init_aux_vars(np.ones_like, self.params)
 
     def update(self, **kwargs):
         """
@@ -122,27 +164,18 @@ class Adagrad(Optimizers):
         Returns:
         - Updated parameters.
         """
-        alpha = get_key_from_params(self.learning_rate_keys, kwargs)
-        epsilon = get_key_from_params(self.threshold_keys, kwargs, self.threshold_cb)
 
-        if 'params' not in kwargs:
-            x = get_key_from_params(self.starting_point_keys, kwargs, self.starting_point_cb)
-            grad_of_x = self.df(x)
+        if not self.init:
+            raise Exception("You must initialize object before updating")
 
-            self.squared_gradients += grad_of_x ** 2
-            return x - alpha * grad_of_x / (np.sqrt(self.squared_gradients) + epsilon)
+        params = kwargs['params']
 
-        self.multivariate = True
-        if self.gradient_cumulative is None:
-            params = get_key_from_params(['params'], kwargs)
-            grads = get_key_from_params(['grads', 'gradient'], kwargs)
-            self.gradient_cumulative = {k: np.ones_like(v) for k, v in params.keys()}
+        for key, val in params.items():
+            params_grads = self.grads[key](**params)
+            self.squared_grads[key] += params_grads ** 2
+            params[key] -= (self.learning_rate * params_grads / np.sqrt(self.squared_grads[key] + self.threshold))
 
-        for key, val in params.keys() and self.multivariate:
-            grad = grads[key](params)
-            self.gradient_cumulative[key] += grad ** 2
-            params[key] -= ((alpha * grad) / (np.sqrt(self.gradient_cumulative[key]) + epsilon))
-            return params
+        return params
 
 
 class Momentum(Optimizers):
@@ -168,10 +201,8 @@ class Momentum(Optimizers):
         - **kwargs: Arbitrary keyword arguments. Expected to contain the gradient function and initial parameters.
         """
         super().__init__(**kwargs)
-        self.vector = np.zeros_like(self.initial_input)
-        self.gamma = get_key_from_params(self.momentum_keys, kwargs)
-        self.init = True
-        self.df = super.df
+        self.velocities = init_aux_vars(np.zeros_like, params=self.params)
+        self.momentum = get_key_from_params(self.momentum_keys, kwargs)
 
     def update(self, **kwargs):
         """
@@ -183,9 +214,13 @@ class Momentum(Optimizers):
         Returns:
         - Updated parameters (numpy.ndarray) based on the momentum optimization.
         """
-        x = get_key_from_params(self.starting_point_keys, kwargs)
-        self.vector = self.gamma * self.vector + self.alpha * self.df(x)
-        return x - self.vector
+        params = kwargs['params']
+        for key, val in params.items():
+            v = self.velocities[key]
+            self.velocities[key] = self.momentum * v + self.learning_rate * self.grads[key](**params)
+            params[key] = val - self.velocities[key]
+
+        return params
 
 
 class Adadelta(Optimizers):
@@ -212,10 +247,9 @@ class Adadelta(Optimizers):
         - **kwargs: Arbitrary keyword arguments. Expected to contain the gradient function and initial parameters.
         """
         super().__init__(**kwargs)
-        self.x = get_key_from_params(self.starting_point_keys, kwargs, self.starting_point_cb)
         self.rho = get_key_from_params(self.adadelta_keys, kwargs, self.param_cb)
-        self.Eg = np.ones_like(self.x)
-        self.Edelta = np.ones_like(self.x)
+        self.Eg = init_aux_vars(np.ones_like, self.params)
+        self.Edelta = init_aux_vars(np.ones_like, self.params)
 
     def update(self, **kwargs):
         """
@@ -227,26 +261,30 @@ class Adadelta(Optimizers):
         Returns:
         - Updated parameters (numpy.ndarray) based on the Adadelta optimization.
         """
-        x = get_key_from_params(self.starting_point_keys, kwargs, self.starting_point_cb)
-        epsilon = get_key_from_params(self.threshold_keys, kwargs, self.threshold_cb)
-        alpha = get_key_from_params(self.learning_rate_keys, kwargs, self.learning_rate_cb)
+        params = kwargs['params']
+        for key, val in params.items():
+            eval = self.grads[key](**params)
+            self.Eg[key] = self.rho * self.Eg[key] + (1 - self.rho) * (eval ** 2)
+            delta = np.sqrt((self.Edelta[key] + self.threshold) / (self.Eg[key] + self.threshold)) * eval
+            self.Edelta[key] = self.rho * self.Eg[key] + (1 - self.rho) * (delta ** 2)
+            params[key] = val - self.learning_rate * delta
 
-        self.Eg = self.rho * self.Eg + (1 - self.rho) * (self.df(x) ** 2)
-        delta = np.sqrt((self.Edelta + epsilon) / (self.Eg + epsilon)) * self.df(x)
-        self.Edelta = self.rho * self.Eg + (1 - self.rho) * (delta ** 2)
-        return x - alpha * delta
+        return params
+
 
 class RMSprop(Optimizers):
     def __init__(self, **kwargs):
-        super.__init__(**kwargs)
-        self.x = get_key_from_params(self.starting_point_keys, **kwargs)
-        self.momentum = np.ones_like(self.x)
-        self.history = [self.x]
-        self.df = get_key_from_params(self.grad_keys, **kwargs)
-        self.beta = get_key_from_params(self.momentum_keys, **kwargs)
+        super().__init__(**kwargs)
+        self.velocities = init_aux_vars(np.ones_like, self.params)
+        self.momentum = get_key_from_params(self.momentum_keys, **kwargs)
 
     def update(self, **kwargs):
-
-        grad = self.df(self.x)
-        self.momentum = self.beta * self.momentum + (1 - self.beta) * grad**2
-
+        params = kwargs['params']
+        for key, val in params.items():
+            grad = self.grads[key](**params)
+            v = self.velocities[key]
+            v *= self.momentum + (1 - self.momentum) * grad ** 2
+            length = np.sqrt(v) + self.threshold
+            params[key] -= self.learning_rate * grad / length
+            self.velocities[key] = v
+        return params
